@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MPEG-H Decoder</title>
+    <meta name="description" content="Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser.">
+    <meta name="keywords" content="MPEG-H, WAV, audio conversion, online MPEG-H converter, MPEG-H decoder">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="MPEG-H Decoder">
+    <meta property="og:description" content="Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,200..900;1,200..900&display=swap');
+
+        html {
+            font-family: 'Source Sans 3', sans-serif;
+            background-color: #f0f0f0;
+            height: 100%;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        button, input::-webkit-file-upload-button {
+            font-family: 'Source Sans 3', sans-serif;
+            border: none;
+            border-radius: 20px;
+            padding: 10px;
+            background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+            box-shadow: 0 2px #999;
+            color: black;
+        }
+        button:hover, input::-webkit-file-upload-button:hover {
+            background: linear-gradient(to bottom, #d0d0d0, #b0b0b0);
+        }
+        button:active, input::-webkit-file-upload-button:active {
+            transform: translateY(2px);
+        }
+
+        #throbber {
+            display: none;
+        }
+
+        .github-ribbon {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+        }
+
+
+        input[type="file"], input[type="number"], input[type="text"] {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 5px;
+            box-shadow: inset 1px 1px 3px #ddd;
+        }
+
+        #advancedOptions {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: inset 1px 1px 3px #ddd;
+            background-color: #fff;
+            text-align: left;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        label {
+            padding-right: 5px;
+            font-weight: 500;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+    </style>
+</head>
+
+<body>
+    <a href="https://github.com/Jazzzny/mpegh-to-wav-online" class="github-ribbon"><img decoding="async" width="149" height="149" src="https://github.blog/wp-content/uploads/2008/12/forkme_left_darkblue_121621.png" class="attachment-full size-full" alt="Fork me on GitHub" loading="lazy"></a>
+    <div class="container">
+        <h1>MPEG-H Decoder</h1>
+        <p>Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser, powered by WebAssembly and the open source <a href="https://github.com/Fraunhofer-IIS/mpeghdec">Fraunhofer MPEG-H decoder</a>.</p>
+        <input type="file" id="inputFile">
+        <a id="downloadLink" style="display:none;">Download WAV</a>
+        <br><br>
+
+        <div id="throbber">Processing...<br>(This may take a while, page may become unresponsive)</div>
+
+        <div id="advancedOptions">
+            <label for="channelConfig">Target Layout:</label>
+            <input type="number" id="channelConfig" name="channelConfig" min="1">
+            <br>
+            <small>Options are listed at <a href="https://github.com/Fraunhofer-IIS/mpeghdec/wiki/MPEG-H-decoder-target-layouts">https://github.com/Fraunhofer-IIS/mpeghdec/wiki/MPEG-H-decoder-target-layouts</a>. If no layout is specified, the decoder will default to Layout 6 (6 channels).</small>
+            <br>
+            <label for="advancedInput">Advanced Options:</label>
+            <input type="text" id="advancedInput" name="advancedInput">
+            <br>
+            <small>Pass additional options to the decoder. Available options are provided in the console.</small>
+        </div>
+
+        <br>
+
+        <button onclick="runDecoder()" style="padding-left: 40px; padding-right: 40px;">Convert</button>
+
+    </div>
+
+    <script src="mpeghDecoder.js"></script>
+    <script>
+        var inputFileName = 'input.m4a';
+        var outputFileName;
+
+        function runDecoder() {
+            var inputElement = document.getElementById('inputFile');
+            if (inputElement.files.length === 0) {
+                alert('Please select a file.');
+                return;
+            }
+            else if (!inputElement.files[0].type.startsWith('audio/')) {
+                alert('Please select an audio file.');
+                return;
+            }
+
+            outputFileName = inputElement.files[0].name.replace(/\.[^/.]+$/, '') + '.wav';
+
+            document.getElementById('throbber').style.display = 'block';
+
+            var file = inputElement.files[0];
+            var reader = new FileReader();
+
+            reader.onload = function(e) {
+                var data = new Uint8Array(reader.result);
+                FS.writeFile(inputFileName, data);
+
+                var args = ['-if', inputFileName, '-of', outputFileName];
+
+                var channelConfigValue = document.getElementById('channelConfig').value;
+                if (channelConfigValue) {
+                    args.push('-tl', channelConfigValue);
+                }
+
+                var advancedOptionsValue = document.getElementById('advancedInput').value;
+                if (advancedOptionsValue) {
+                    var advancedArgs = advancedOptionsValue.trim().split(/\s+/);
+                    args = args.concat(advancedArgs);
+                }
+
+                Module.callMain(args);
+
+                var outputData = FS.readFile(outputFileName);
+                var blob = new Blob([outputData], { type: 'audio/wav' });
+                var url = window.URL.createObjectURL(blob);
+
+                var link = document.getElementById('downloadLink');
+                link.href = url;
+                link.download = outputFileName;
+                link.style.display = 'inline';
+                link.click();
+
+                document.getElementById('throbber').style.display = 'none';
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+    </script>
+</body>
+</html>
