@@ -163,7 +163,15 @@
 
                 Module.callMain(args);
 
-                var outputData = FS.readFile(outputFileName);
+                var outputData;
+                try {
+                    outputData = FS.readFile(outputFileName);
+                } catch (e) {
+                    alert('An error occurred. Please check the console for more information.');
+                    document.getElementById('throbber').style.display = 'none';
+                    return;
+                }
+
                 var blob = new Blob([outputData], { type: 'audio/wav' });
                 var url = window.URL.createObjectURL(blob);
 
