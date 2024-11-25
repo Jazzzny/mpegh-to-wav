@@ -149,7 +149,12 @@
 
                 throbber.style.display = 'none';
             } else if (type === 'error') {
-                alert('An error occurred: ' + message);
+                if (message) {
+                    alert('An error occurred: ' + message);
+                } else {
+                    alert('An error occurred, please check the console for more information.');
+                }
+
                 throbber.style.display = 'none';
             }
         };
