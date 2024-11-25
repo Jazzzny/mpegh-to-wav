@@ -7,7 +7,7 @@
     <meta name="keywords" content="MPEG-H, WAV, audio conversion, online MPEG-H converter, MPEG-H decoder">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta property="og:title" content="MPEG-H Decoder">
-    <meta property="og:description" content="Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser">
+    <meta property="og:description" content="Convert MPEG-H files to WAV format online without uploading files to a server">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,200..900;1,200..900&display=swap');
 
@@ -107,7 +107,7 @@
         <div class="download-links" id="downloadLinks"></div>
         <br><br>
 
-        <div id="throbber">Processing...<br>(This may take a while, page may become unresponsive)</div>
+        <div id="throbber">Processing</div>
 
         <div id="advancedOptions">
             <label for="channelConfig">Target Layout:</label>
@@ -123,8 +123,10 @@
 
         <br>
         <button id="convertButton" style="padding-left: 40px; padding-right: 40px;">Convert</button>
+        <button id="downloadAllButton" style="padding-left: 40px; padding-right: 40px; display: none;">Download all as zip</button>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script>
         const worker = new Worker('decoderWorker.js');
 
@@ -132,9 +134,11 @@
         const downloadLinks = document.getElementById('downloadLinks');
         const throbber = document.getElementById('throbber');
         const convertButton = document.getElementById('convertButton');
+        const downloadAllButton = document.getElementById('downloadAllButton');
 
         let filesQueue = [];
         let isProcessing = false;
+        let processedFiles = [];
 
         worker.onmessage = function(e) {
             const { type, message, data } = e.data;
@@ -147,6 +151,8 @@
                 const blob = new Blob([data], { type: 'audio/wav' });
                 const url = URL.createObjectURL(blob);
                 const fileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.wav';
+
+                processedFiles.push({ name: fileName, blob: blob });
 
                 const link = document.createElement('a');
                 link.href = url;
@@ -177,10 +183,14 @@
                 }
             }
 
+            downloadAllButton.style.display = 'none';
+
             filesQueue = Array.from(inputFile.files);
             downloadLinks.innerHTML = '';
             throbber.style.display = 'block';
-            throbber.innerHTML = 'Processing...';
+            throbber.innerHTML = 'Processing';
+
+            processedFiles = [];
 
             if (!isProcessing) {
                 isProcessing = true;
@@ -192,6 +202,9 @@
             if (filesQueue.length === 0) {
                 throbber.style.display = 'none';
                 isProcessing = false;
+
+                downloadAllButton.style.display = 'inline-block';
+
                 return;
             }
 
@@ -226,6 +239,46 @@
 
             reader.readAsArrayBuffer(file);
         }
+
+        downloadAllButton.onclick = function() {
+            if (processedFiles.length === 0) {
+                alert('No files to download.');
+                return;
+            }
+
+            throbber.style.display = 'block';
+            throbber.innerHTML = 'Zipping files';
+
+            const zip = new JSZip();
+            processedFiles.forEach(file => {
+                zip.file(file.name, file.blob);
+            });
+
+            zip.generateAsync({ type: 'blob' }, (metadata) => {
+                throbber.innerHTML = 'Zipping files (' + Math.round(metadata.percent) + '%)';
+            }).then(content => {
+                const zipName = 'converted.zip';
+                const zipURL = URL.createObjectURL(content);
+
+                const link = document.createElement('a');
+                link.href = zipURL;
+                link.download = zipName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                throbber.style.display = 'none';
+
+                downloadAllButton.onclick = function() {
+                    const link = document.createElement('a');
+                    link.href = zipURL;
+                    link.download = zipName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+            });
+        };
     </script>
 </body>
 </html>
