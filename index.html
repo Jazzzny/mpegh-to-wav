@@ -93,7 +93,9 @@
 </head>
 
 <body>
-    <a href="https://github.com/Jazzzny/mpegh-to-wav-online" class="github-ribbon"><img decoding="async" width="149" height="149" src="https://github.blog/wp-content/uploads/2008/12/forkme_left_darkblue_121621.png" class="attachment-full size-full" alt="Fork me on GitHub" loading="lazy"></a>
+    <a href="https://github.com/Jazzzny/mpegh-to-wav-online" class="github-ribbon">
+        <img decoding="async" width="149" height="149" src="https://github.blog/wp-content/uploads/2008/12/forkme_left_darkblue_121621.png" alt="Fork me on GitHub" loading="lazy">
+    </a>
     <div class="container">
         <h1>MPEG-H Decoder</h1>
         <p>Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser, powered by WebAssembly and the open source <a href="https://github.com/Fraunhofer-IIS/mpeghdec">mpeghdec decoder</a> <small><a href="https://github.com/Fraunhofer-IIS/mpeghdec/blob/main/LICENSE.txt">(License)</a></small>.</p>
@@ -116,76 +118,85 @@
         </div>
 
         <br>
-
-        <button onclick="runDecoder()" style="padding-left: 40px; padding-right: 40px;">Convert</button>
-
+        <button id="convertButton" style="padding-left: 40px; padding-right: 40px;">Convert</button>
     </div>
 
-    <script src="mpeghDecoder.js"></script>
     <script>
-        var inputFileName = 'input.m4a';
-        var outputFileName;
+        const worker = new Worker('decoderWorker.js');
 
-        function runDecoder() {
-            var inputElement = document.getElementById('inputFile');
-            if (inputElement.files.length === 0) {
+        const inputFile = document.getElementById('inputFile');
+        const downloadLink = document.getElementById('downloadLink');
+        const throbber = document.getElementById('throbber');
+        const convertButton = document.getElementById('convertButton');
+
+        worker.onmessage = function(e) {
+            const { type, message, data } = e.data;
+
+            if (type === 'ready') {
+                console.log('Worker is ready.');
+            } else if (type === 'progress') {
+                throbber.innerHTML = message;
+            } else if (type === 'complete') {
+                const blob = new Blob([data], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+
+                downloadLink.href = url;
+                downloadLink.download = inputFile.files[0].name.replace(/\.[^/.]+$/, '') + '.wav';
+                downloadLink.style.display = 'inline';
+                downloadLink.textContent = 'Download WAV';
+
+                downloadLink.click();
+
+                throbber.style.display = 'none';
+            } else if (type === 'error') {
+                alert('An error occurred: ' + message);
+                throbber.style.display = 'none';
+            }
+        };
+
+        convertButton.onclick = function() {
+            if (inputFile.files.length === 0) {
                 alert('Please select a file.');
                 return;
-            }
-            else if (!inputElement.files[0].type.startsWith('audio/')) {
+            } else if (!inputFile.files[0].type.startsWith('audio/')) {
                 alert('Please select an audio file.');
                 return;
             }
 
-            outputFileName = inputElement.files[0].name.replace(/\.[^/.]+$/, '') + '.wav';
+            const file = inputFile.files[0];
+            const reader = new FileReader();
 
-            document.getElementById('throbber').style.display = 'block';
-
-            var file = inputElement.files[0];
-            var reader = new FileReader();
+            throbber.style.display = 'block';
+            throbber.innerHTML = 'Processing...';
 
             reader.onload = function(e) {
-                var data = new Uint8Array(reader.result);
-                FS.writeFile(inputFileName, data);
+                const data = e.target.result;
 
-                var args = ['-if', inputFileName, '-of', outputFileName];
+                const inputFileName = 'input.m4a';
+                const outputFileName = file.name.replace(/\.[^/.]+$/, '') + '.wav';
+                const channelConfigValue = document.getElementById('channelConfig').value;
+                const advancedOptionsValue = document.getElementById('advancedInput').value;
 
-                var channelConfigValue = document.getElementById('channelConfig').value;
+                let args = ['-if', inputFileName, '-of', outputFileName];
                 if (channelConfigValue) {
                     args.push('-tl', channelConfigValue);
                 }
-
-                var advancedOptionsValue = document.getElementById('advancedInput').value;
                 if (advancedOptionsValue) {
-                    var advancedArgs = advancedOptionsValue.trim().split(/\s+/);
+                    const advancedArgs = advancedOptionsValue.trim().split(/\s+/);
                     args = args.concat(advancedArgs);
                 }
 
-                Module.callMain(args);
-
-                var outputData;
-                try {
-                    outputData = FS.readFile(outputFileName);
-                } catch (e) {
-                    alert('An error occurred. Please check the console for more information.');
-                    document.getElementById('throbber').style.display = 'none';
-                    return;
-                }
-
-                var blob = new Blob([outputData], { type: 'audio/wav' });
-                var url = window.URL.createObjectURL(blob);
-
-                var link = document.getElementById('downloadLink');
-                link.href = url;
-                link.download = outputFileName;
-                link.style.display = 'inline';
-                link.click();
-
-                document.getElementById('throbber').style.display = 'none';
+                worker.postMessage({
+                    type: 'start',
+                    inputFileName,
+                    outputFileName,
+                    data,
+                    args
+                });
             };
 
             reader.readAsArrayBuffer(file);
-        }
+        };
     </script>
 </body>
 </html>
