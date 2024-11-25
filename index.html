@@ -146,7 +146,7 @@
             if (type === 'ready') {
                 console.log('Worker is ready.');
             } else if (type === 'progress') {
-                throbber.innerHTML = message;
+                throbber.innerHTML = filesQueue[0].name + ": " + message;
             } else if (type === 'complete') {
                 const blob = new Blob([data], { type: 'audio/wav' });
                 const url = URL.createObjectURL(blob);
