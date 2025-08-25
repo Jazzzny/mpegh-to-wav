@@ -176,7 +176,7 @@
         console.log(message);
         });
 
-        ffmpeg.load({coreURL: "assets/core/package/dist/umd/ffmpeg-core.js"}).then(() => {
+        ffmpeg.load().then(() => {
             console.log('FFmpeg loaded');
         }).catch(err => {
             console.error('Error loading FFmpeg:', err);
