@@ -1,1 +1,4 @@
 .DS_Store
+AtomicParsley.js
+.gitignore
+AtomicParsleyWorker.js

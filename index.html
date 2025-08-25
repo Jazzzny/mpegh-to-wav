@@ -3,11 +3,11 @@
 <head>
     <meta charset="utf-8">
     <title>MPEG-H Decoder</title>
-    <meta name="description" content="Convert MPEG-H files to WAV format online without uploading files to a server. All processing is done locally in your browser.">
-    <meta name="keywords" content="MPEG-H, WAV, audio conversion, online MPEG-H converter, MPEG-H decoder">
+    <meta name="description" content="Convert MPEG-H files to WAV, FLAC, or M4A format online without uploading files to a server. All processing is done locally in your browser.">
+    <meta name="keywords" content="MPEG-H, WAV, FLAC, audio conversion, online MPEG-H converter, MPEG-H decoder, mhm1, mha1">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta property="og:title" content="MPEG-H Decoder">
-    <meta property="og:description" content="Convert MPEG-H files to WAV format online without uploading files to a server">
+    <meta property="og:description" content="Convert MPEG-H files to WAV, FLAC, or M4A format online without uploading files to a server">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,200..900;1,200..900&display=swap');
 
@@ -62,9 +62,10 @@
             border-radius: 10px;
             padding: 5px;
             box-shadow: inset 1px 1px 3px #ddd;
+            font-family: inherit;
         }
 
-        #advancedOptions {
+        #advancedOptions, #formatOptions {
             border: 1px solid #ccc;
             border-radius: 10px;
             padding: 10px;
@@ -73,6 +74,14 @@
             text-align: left;
             margin-top: 10px;
             font-size: 0.9em;
+        }
+
+        select {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 5px;
+            box-shadow: inset 1px 1px 3px #ddd;
+            font-family: inherit;
         }
 
         label {
@@ -102,10 +111,11 @@
     </a>
     <div class="container">
         <h1>MPEG-H Decoder</h1>
-        <p>Convert MPEG-H files to WAV format online without uploading files to a server.<br>All processing is done locally in your browser, powered by WebAssembly and the open source <a href="https://github.com/Fraunhofer-IIS/mpeghdec">mpeghdec decoder</a> <small><a href="https://github.com/Fraunhofer-IIS/mpeghdec/blob/main/LICENSE.txt">(License)</a></small>.</p>
+        <p>Convert MPEG-H files (mhm1 and mha1 formats) to WAV, FLAC, or Dolby Digital Plus EAC3 (m4a) online <b>without</b> uploading files to a server.<br>All processing is done locally in your browser, powered by WebAssembly, the open source <a href="https://github.com/Fraunhofer-IIS/mpeghdec">mpeghdec decoder</a> <small><a href="https://github.com/Fraunhofer-IIS/mpeghdec/blob/main/LICENSE.txt">(License)</a></small>, and <a href="https://github.com/ffmpegwasm/ffmpeg.wasm">ffmpeg.wasm</a> <small><a href="https://github.com/ffmpegwasm/ffmpeg.wasm/blob/main/LICENSE">(License)</a></small>.</p>
         <input type="file" id="inputFile" multiple>
         <div class="download-links" id="downloadLinks"></div>
-        <br><br>
+
+        <br>
 
         <div id="throbber">Processing</div>
 
@@ -121,24 +131,59 @@
             <small>Pass additional options to the decoder. Available options are provided in the console.</small>
         </div>
 
+
+        <div id="formatOptions">
+            <label for="formatSelect">Output Format:</label>
+            <select id="formatSelect" name="formatSelect">
+                <option value="wav" selected>WAV (Lossless, uncompressed)</option>
+                <option value="flac">FLAC (Lossless, compressed)</option>
+                <option value="m4a">Dolby Digital Plus EAC3 (m4a)</option>
+            </select>
+            <br>
+            <small>WAV files are significantly larger but lossless, FLAC files are smaller and lossless, and M4A files are very small but lossy.</small>
+        </div>
+
         <br>
         <button id="convertButton" style="padding-left: 40px; padding-right: 40px;">Convert</button>
         <button id="downloadAllButton" style="padding-left: 40px; padding-right: 40px; display: none;">Download all as zip</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="/assets/ffmpeg/package/dist/umd/ffmpeg.js"></script>
+<!--    <script src="AtomicParsley.js"></script>
+-->
     <script>
         const worker = new Worker('decoderWorker.js');
+//        const AtomicParsleyWorker = new Worker('AtomicParsleyWorker.js');
 
         const inputFile = document.getElementById('inputFile');
         const downloadLinks = document.getElementById('downloadLinks');
         const throbber = document.getElementById('throbber');
         const convertButton = document.getElementById('convertButton');
         const downloadAllButton = document.getElementById('downloadAllButton');
+        const formatSelect = document.getElementById('formatSelect');
 
         let filesQueue = [];
         let isProcessing = false;
         let processedFiles = [];
+
+        const { FFmpeg } = FFmpegWASM;
+
+        let ffmpeg = null;
+        ffmpeg = new FFmpeg();
+
+        ffmpeg.on("log", ({ message }) => {
+        console.log(message);
+        });
+
+        ffmpeg.load({coreURL: "/assets/core/package/dist/umd/ffmpeg-core.js"}).then(() => {
+            console.log('FFmpeg loaded');
+        }).catch(err => {
+            console.error('Error loading FFmpeg:', err);
+        });
+
+//        let currentMetadata = null;
+
 
         worker.onmessage = function(e) {
             const { type, message, data } = e.data;
@@ -148,26 +193,126 @@
             } else if (type === 'progress') {
                 throbber.innerHTML = filesQueue[0].name + ": " + message;
             } else if (type === 'complete') {
-                const blob = new Blob([data], { type: 'audio/wav' });
-                const url = URL.createObjectURL(blob);
-                const fileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.wav';
 
-                processedFiles.push({ name: fileName, blob: blob });
+                if (formatSelect.value === "wav") {
+                    const blob = new Blob([data], { type: 'audio/wav' });
+                    const fileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.wav';
 
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = fileName;
-                link.textContent = `Download ${fileName}`;
-                link.style.display = 'block';
-                downloadLinks.appendChild(link);
+                    processedFiles.push({ name: fileName, blob: blob });
+                    createDownloadLink(fileName, blob);
 
-                filesQueue.shift();
-                processNextFile();
+                    filesQueue.shift();
+                    processNextFile();
+
+                } else if (formatSelect.value === "flac") {
+
+                    const flacFileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.flac';
+                    const wavData = new Uint8Array(data);
+
+                    (async () => {
+                        await ffmpeg.writeFile("temp.wav", wavData);
+
+                        ffmpeg.on("progress", ({ progress, time }) => {
+                            throbber.innerHTML = filesQueue[0].name + `: Converting to FLAC (${Math.round(progress * 100)}%)`;
+                        });
+
+                        await ffmpeg.exec([
+                            '-i', "temp.wav",
+                            '-c:a', 'flac',
+                            '-compression_level', '12',
+                            "temp.flac"
+                        ]);
+
+                        const flacData = await ffmpeg.readFile("temp.flac");
+                        const flacBlob = new Blob([flacData], { type: 'audio/flac' });
+
+                        processedFiles.push({ name: flacFileName, blob: flacBlob });
+                        createDownloadLink(flacFileName, flacBlob);
+
+                        filesQueue.shift();
+                        processNextFile();
+
+                    })();
+                    return;
+                } else if (formatSelect.value === "m4a") {
+//                    console.log(currentMetadata);
+
+                    const wavFileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.wav';
+                    const m4aFileName = filesQueue[0].name.replace(/\.[^/.]+$/, '') + '.mp4'; // technically mp4 as ffmpeg refuses m4a extension
+                    const wavData = new Uint8Array(data);
+
+                    (async () => {
+                        await ffmpeg.writeFile("temp.wav", wavData);
+
+                        ffmpeg.on("progress", ({ progress, time }) => {
+                            throbber.innerHTML = filesQueue[0].name + `: Converting to FLAC (${Math.round(progress * 100)}%)`;
+                        });
+
+                        await ffmpeg.exec([
+                            '-i', "temp.wav",
+                            '-map', '0',
+                            '-c:a', 'eac3',
+                            "temp.mp4"
+                        ]);
+
+                        const m4aData = await ffmpeg.readFile("temp.mp4");
+                        const m4aBlob = new Blob([m4aData], { type: 'audio/mp4' });
+
+
+                        const fileName = m4aFileName.replace(/\.mp4$/, '.m4a');
+                        processedFiles.push({ name: fileName, blob: m4aBlob });
+                        createDownloadLink(fileName, m4aBlob);
+
+                        filesQueue.shift();
+                        processNextFile();
+
+//                        const metadataArgs = metadataToAtomicParsleyArgs(currentMetadata);
+
+/*                        // Handler for AtomicParsleyWorker completion
+                        const handleAPMessage = function(e) {
+                            if (e.data.type === 'writeMetadataComplete') {
+                                // e.data.data should be the tagged file as ArrayBuffer
+                                const taggedBlob = new Blob([e.data.data], { type: 'audio/mp4' });
+                                // rename to .m4a for user
+                                const fileName = m4aFileName.replace(/\.mp4$/, '.m4a');
+                                processedFiles.push({ name: fileName, blob: taggedBlob });
+                                createDownloadLink(fileName, taggedBlob);
+
+
+                                filesQueue.shift();
+                                processNextFile();
+
+                                AtomicParsleyWorker.removeEventListener('message', handleAPMessage);
+                            }
+                        };
+                        AtomicParsleyWorker.addEventListener('message', handleAPMessage);
+
+                        // Send to AtomicParsleyWorker for tagging
+                        AtomicParsleyWorker.postMessage({
+                            type: 'writeMetadata',
+                            fileName: "temp.mp4",
+                            data: m4aData.buffer,
+                            //args: ["temp.mp4"].concat(metadataArgs).concat(['-o', "out.mp4"])
+                            args: ["temp.mp4", "--artist", "Sia", "-o", "out.mp4"]
+                        }, [m4aData.buffer]);
+*/                    })();
+                    return;
+                }
             } else if (type === 'error') {
                 alert('An error occurred: ' + message);
                 filesQueue.shift();
                 processNextFile();
             }
+
+        function createDownloadLink(fileName, blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            link.textContent = `Download ${fileName}`;
+            link.style.display = 'block';
+            downloadLinks.appendChild(link);
+        }
         };
 
         convertButton.onclick = function() {
@@ -198,6 +343,71 @@
             }
         };
 
+/*        function processMetadataArray(metadata) {
+            // Atom "©nam" contains: The Greatest
+            const atomRegex = /^Atom\s+"([^"]+)"\s+contains:\s*(.*)$/;
+            const result = {};
+            for (const line of metadata) {
+                const match = atomRegex.exec(line);
+                if (match) {
+                    const atom = match[1];
+                    const value = match[2];
+                    result[atom] = value;
+                }
+            }
+
+            console.log(result);
+            return result;
+        }
+
+        function metadataToAtomicParsleyArgs(metadata) {
+            const args = [];
+
+            if (metadata['©ART'] || metadata['aART']) {
+                args.push('--artist', metadata['©ART'] || metadata['aART']);
+            }
+            if (metadata['©alb']) {
+                args.push('--album', metadata['©alb']);
+            }
+            if (metadata['©nam']) {
+                args.push('--title', metadata['©nam']);
+            }
+            if (metadata['©gen']) {
+                args.push('--genre', metadata['©gen']);
+            }
+            if (metadata['trkn']) {
+                // Format: "19 of 19"
+                const match = metadata['trkn'].match(/(\\d+)(?: of (\\d+))?/);
+                if (match) {
+                    args.push('--tracknum', match[2] ? `${match[1]}/${match[2]}` : match[1]);
+                }
+            }
+            if (metadata['disk']) {
+                // Format: "1 of 1"
+                const match = metadata['disk'].match(/(\\d+)(?: of (\\d+))?/);
+                if (match) {
+                    args.push('--disk', match[2] ? `${match[1]}/${match[2]}` : match[1]);
+                }
+            }
+            if (metadata['©day']) {
+                args.push('--year', metadata['©day']);
+            }
+            if (metadata['©wrt']) {
+                args.push('--composer', metadata['©wrt']);
+            }
+            if (metadata['cprt']) {
+                args.push('--copyright', metadata['cprt']);
+            }
+//            if (metadata['©lyr']) {
+//                args.push('--lyrics', metadata['©lyr']);
+//            }
+            if (metadata['©url']) {
+                args.push('--comment', metadata['©url']);
+            }
+
+            return args;
+        }
+*/
         function processNextFile() {
             if (filesQueue.length === 0) {
                 throbber.style.display = 'none';
@@ -229,12 +439,34 @@
                 }
 
                 worker.postMessage({
+                            type: 'start',
+                            inputFileName,
+                            outputFileName,
+                            data,
+                            args
+                });
+
+/*                AtomicParsleyWorker.postMessage({
                     type: 'start',
                     inputFileName,
-                    outputFileName,
                     data,
-                    args
+                    args: [inputFileName, '-t']
                 });
+
+                AtomicParsleyWorker.onmessage = function(e) {
+                    if (e.data.type === 'complete') {
+                        console.log('Metadata:', e.data.data);
+                        currentMetadata = processMetadataArray(e.data.data);
+
+                        worker.postMessage({
+                            type: 'start',
+                            inputFileName,
+                            outputFileName,
+                            data,
+                            args
+                        });
+                    }
+                }*/
             };
 
             reader.readAsArrayBuffer(file);
